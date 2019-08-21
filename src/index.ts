@@ -1,15 +1,175 @@
-import express from "express";
+import { WebClient } from "@slack/web-api";
+import puppeteer from "puppeteer";
 
-const app = express();
-const port = 8080; // default port to listen
+import { BPTM_ADMIN, BPTM_ADMIN_PWD } from "./puppeteer/global";
+import { clickByText, enterInputValue, navigateClick } from "./puppeteer/helper";
+const requestTimeOut = 30000;
 
-// define a route handler for the default home page
-app.get( "/", ( req, res ) => {
-    res.send( "Hello world!" );
-} );
+interface IAgendaCell {
+  member: string;
+  role: string;
+  signed: boolean;
+}
 
-// start the Express server
-app.listen( port, () => {
+// const generateMessage = async (agenda: Map<string, IAgendaCell>) => {
+//   let text: string = "Hello Dear Toastmasters! \nThe agenda this week will be: \n ";
+//   const unassignedRoles: string[] = new Array();
+//   Object.values(agenda).forEach((a: IAgendaCell)  => {
+//     // tslint:disable-next-line:no-console
+//     console.log("role is: " + a.role);
+//     if (a.signed) {
+//        text += a.role + " : " + a.member + "\n";
+//     } else {
+//       unassignedRoles.push(a.role);
+//     }
+//   });
+
+//   if (unassignedRoles.length > 0) {
+//     text += "\n Please hurry up to fill in the following *unassigned* roles: \t";
+//     for (let i = 0; i < unassignedRoles.length; i++) {
+//       text += unassignedRoles[i];
+//       if (i < unassignedRoles.length - 1) {
+//         text += ", ";
+//       }
+//     }
+//   }
+//   return text;
+// };
+
+const sendSlackNotification = async (agenda: IAgendaCell[], screenshot: Buffer) => {
+
+  const token = process.env.SLACK_TOKEN;
+
+  const web = new WebClient(token);
+
+  const conversationId = "GMHHVSL5D";
+
+  const roleMap: Map<string, IAgendaCell> = new Map();
+  agenda.forEach((a: IAgendaCell)  => {
+    roleMap.set(a.role, a);
+  });
+
+  let text: string = "@channel, Hello dear Toastmasters! The agenda this week will be: \n ";
+  const unassignedRoles: string[] = new Array();
+
+  roleMap.forEach((a: IAgendaCell, _: string)  => {
+    if (a.signed) {
+       text += "*" + a.role + "* : " + a.member + "\n";
+    } else {
+      unassignedRoles.push(a.role);
+    }
+  });
+
+  if (unassignedRoles.length > 0) {
+    text += "\n Please hurry up to fill in the following *unassigned* roles: \t";
+    for (let i = 0; i < unassignedRoles.length; i++) {
+      text += unassignedRoles[i];
+      if (i < unassignedRoles.length - 1) {
+        text += ", ";
+      }
+    }
+  }
+  // const text = await generateMessage(agenda);
+
+  (async () => {
+    // See: https://api.slack.com/methods/chat.postMessage
+    const res = await web.chat.postMessage({ channel: conversationId, text });
+    // `res` contains information about the posted message
     // tslint:disable-next-line:no-console
-    console.log( `server started at http://localhost:${ port }` );
-} );
+    console.log("Message sent: ", res.ts);
+    const res2 = await web.files.upload({channels: conversationId, file:  screenshot, filetype: "auto"});
+  })();
+
+};
+
+(async () => {
+  const browser = await puppeteer.launch({headless: false, devtools: true});
+  const page = await browser.newPage();
+
+  // login
+  await page.goto("https://biopacific.toastmastersclubs.org/index.cgi?adminauth+" + BPTM_ADMIN + "+" + BPTM_ADMIN_PWD);
+
+  // close pop up window
+  try {
+    await clickByText(page, "Keep These and Close", "span");
+  } catch (err) {
+    // tslint:disable-next-line:no-console
+    console.log("err is", err);
+  }
+
+  // member's only tabe
+  await clickByText(page, "Members Only", "a");
+
+  // agenda
+  await clickByText(page, "Meeting Agendas", "a");
+
+  await page.waitFor(6000);
+
+  const meetingAgenda = await page.evaluate(() => {
+    // can't serialize a map
+    const agenda: IAgendaCell[] = new Array();
+    const tds = document.querySelectorAll(".agendaTable td:nth-child(2)");
+    for (const td of tds) {
+      const role = td.getElementsByTagName("b")[0].textContent;
+      const member = td.getElementsByClassName("fth-member-name")[0];
+      let memberName: string = "";
+      let signed: boolean = false;
+      if (member) {
+        const memberWithName = member.getElementsByTagName("b")[0];
+        if (memberWithName) {
+          signed = true;
+          memberName = memberWithName.textContent;
+        }
+      }
+      agenda.push({
+        member: memberName,
+        role,
+        signed,
+      });
+    }
+    return Promise.resolve(agenda);
+  });
+
+  // take a screenshot
+  const image = await page.screenshot({path: "test.png", fullPage: true});
+  // tslint:disable-next-line:no-console
+  // console.log("image is: " + image);
+  await sendSlackNotification(meetingAgenda, image as Buffer);
+
+  // tslint:disable-next-line:no-console
+  // console.log("size is: " + meetingAgenda.size);
+  // Object.values(meetingAgenda).forEach((a: IAgendaCell)  => {
+  //   // tslint:disable-next-line:no-console
+  //   console.log("role is: " + a.role);
+  // });
+
+  // tslint:disable-next-line:no-console
+  // console.log("values are: ", meetingAgenda.values());
+  // send slack notification
+  // await
+
+  await page.waitFor(requestTimeOut);
+
+  await browser.close();
+})();
+
+// (async () => {
+//   const meetingAgenda: IAgendaCell[] = new Array();
+//   await sendSlackNotification(meetingAgenda);
+// })();
+
+// import express from "express";
+
+// const app = express();
+// const port = 8080; // default port to listen
+
+// // define a route handler for the default home page
+// app.get( "/", ( req, res ) => {
+//     res.send( "Hello world!" );
+// } );
+
+// // start the Express server
+// app.listen( port, () => {
+//     // tslint:disable-next-line:no-console
+//     console.log( `server started at http://localhost:${ port }` );
+// } );
