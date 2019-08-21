@@ -73,11 +73,23 @@ const sendSlackNotification = async (agenda: IAgendaCell[], screenshot: Buffer) 
 
   (async () => {
     // See: https://api.slack.com/methods/chat.postMessage
-    const res = await web.chat.postMessage({ channel: conversationId, text });
+    const res = await web.chat.postMessage({
+      channel: conversationId,
+      link_names: true,
+      text
+    });
     // `res` contains information about the posted message
     // tslint:disable-next-line:no-console
     console.log("Message sent: ", res.ts);
-    const res2 = await web.files.upload({channels: conversationId, file:  screenshot, filetype: "auto"});
+    const res2 = await web.files.upload({
+      channels: conversationId,
+      file:  screenshot,
+      filetype: "auto",
+      initial_comment: "Agenda screenshot: "
+    });
+
+    // tslint:disable-next-line:no-console
+    console.log("Message sent: ", res2.ts);
   })();
 
 };
