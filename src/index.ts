@@ -36,7 +36,7 @@ interface IAgendaCell {
 //   return text;
 // };
 
-const sendSlackNotification = async (agenda: IAgendaCell[]) => {
+const sendSlackNotification = async (agenda: IAgendaCell[], screenshot: Buffer) => {
 
   const token = process.env.SLACK_TOKEN;
 
@@ -49,12 +49,12 @@ const sendSlackNotification = async (agenda: IAgendaCell[]) => {
     roleMap.set(a.role, a);
   });
 
-  let text: string = "Hello dear Toastmasters! The agenda this week will be: \n ";
+  let text: string = "@channel, Hello dear Toastmasters! The agenda this week will be: \n ";
   const unassignedRoles: string[] = new Array();
 
   roleMap.forEach((a: IAgendaCell, _: string)  => {
     if (a.signed) {
-       text += a.role + " : " + a.member + "\n";
+       text += "*" + a.role + "* : " + a.member + "\n";
     } else {
       unassignedRoles.push(a.role);
     }
@@ -77,6 +77,7 @@ const sendSlackNotification = async (agenda: IAgendaCell[]) => {
     // `res` contains information about the posted message
     // tslint:disable-next-line:no-console
     console.log("Message sent: ", res.ts);
+    const res2 = await web.files.upload({channels: conversationId, file:  screenshot, filetype: "auto"});
   })();
 
 };
@@ -120,8 +121,6 @@ const sendSlackNotification = async (agenda: IAgendaCell[]) => {
           memberName = memberWithName.textContent;
         }
       }
-      // tslint:disable-next-line:no-console
-      // console.log("role is: " + role + " member is: " + memberName);
       agenda.push({
         member: memberName,
         role,
@@ -131,7 +130,11 @@ const sendSlackNotification = async (agenda: IAgendaCell[]) => {
     return Promise.resolve(agenda);
   });
 
-  await sendSlackNotification(meetingAgenda);
+  // take a screenshot
+  const image = await page.screenshot({path: "test.png", fullPage: true});
+  // tslint:disable-next-line:no-console
+  // console.log("image is: " + image);
+  await sendSlackNotification(meetingAgenda, image as Buffer);
 
   // tslint:disable-next-line:no-console
   // console.log("size is: " + meetingAgenda.size);
@@ -146,8 +149,6 @@ const sendSlackNotification = async (agenda: IAgendaCell[]) => {
   // await
 
   await page.waitFor(requestTimeOut);
-  //
-  await page.screenshot({path: "test.png", fullPage: true});
 
   await browser.close();
 })();
