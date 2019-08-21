@@ -36,7 +36,7 @@ interface IAgendaCell {
 //   return text;
 // };
 
-const sendSlackNotification = (agenda: Map<string, IAgendaCell>) => {
+const sendSlackNotification = async (agenda: IAgendaCell[]) => {
 
   const token = process.env.SLACK_TOKEN;
 
@@ -44,16 +44,15 @@ const sendSlackNotification = (agenda: Map<string, IAgendaCell>) => {
 
   const conversationId = "GMHHVSL5D";
 
-  Object.values(agenda).forEach((a: IAgendaCell)  => {
-    // tslint:disable-next-line:no-console
-    console.log("role is: " + a.role);
+  const roleMap: Map<string, IAgendaCell> = new Map();
+  agenda.forEach((a: IAgendaCell)  => {
+    roleMap.set(a.role, a);
   });
 
-  let text: string = "Hello Dear Toastmasters! \nThe agenda this week will be: \n ";
+  let text: string = "Hello dear Toastmasters! The agenda this week will be: \n ";
   const unassignedRoles: string[] = new Array();
-  Object.values(agenda).forEach((a: IAgendaCell)  => {
-    // tslint:disable-next-line:no-console
-    console.log("role is: " + a.role);
+
+  roleMap.forEach((a: IAgendaCell, _: string)  => {
     if (a.signed) {
        text += a.role + " : " + a.member + "\n";
     } else {
@@ -90,7 +89,12 @@ const sendSlackNotification = (agenda: Map<string, IAgendaCell>) => {
   await page.goto("https://biopacific.toastmastersclubs.org/index.cgi?adminauth+" + BPTM_ADMIN + "+" + BPTM_ADMIN_PWD);
 
   // close pop up window
-  await clickByText(page, "Keep These and Close", "span");
+  try {
+    await clickByText(page, "Keep These and Close", "span");
+  } catch (err) {
+    // tslint:disable-next-line:no-console
+    console.log("err is", err);
+  }
 
   // member's only tabe
   await clickByText(page, "Members Only", "a");
@@ -100,8 +104,9 @@ const sendSlackNotification = (agenda: Map<string, IAgendaCell>) => {
 
   await page.waitFor(6000);
 
-  await page.evaluate(() => {
-    const agenda: Map<string, IAgendaCell> = new Map();
+  const meetingAgenda = await page.evaluate(() => {
+    // can't serialize a map
+    const agenda: IAgendaCell[] = new Array();
     const tds = document.querySelectorAll(".agendaTable td:nth-child(2)");
     for (const td of tds) {
       const role = td.getElementsByTagName("b")[0].textContent;
@@ -117,22 +122,16 @@ const sendSlackNotification = (agenda: Map<string, IAgendaCell>) => {
       }
       // tslint:disable-next-line:no-console
       // console.log("role is: " + role + " member is: " + memberName);
-      agenda.set(role, {
+      agenda.push({
         member: memberName,
         role,
         signed,
       });
-      // tslint:disable-next-line:no-console
-      console.log("size is: " + agenda.size);
     }
-    // tslint:disable-next-line:no-console
-    console.log("size is: " + agenda.size);
-    return agenda;
-  }).then((agenda) => {
-    // tslint:disable-next-line:no-console
-    console.log("size is: " + agenda.size);
-    sendSlackNotification(agenda);
+    return Promise.resolve(agenda);
   });
+
+  await sendSlackNotification(meetingAgenda);
 
   // tslint:disable-next-line:no-console
   // console.log("size is: " + meetingAgenda.size);
