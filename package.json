@@ -17,7 +17,7 @@
   "dependencies": {
     "@slack/events-api": "^2.3.0",
     "@slack/web-api": "^5.1.0",
-    "express": "^4.17.1",
+    "express": "^4.17.3",
     "puppeteer": "^1.19.0"
   }
 }
